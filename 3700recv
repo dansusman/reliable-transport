@@ -13,14 +13,14 @@ from base64 import b64decode
 
 
 def log(string):
-  sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
+  sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " 3700recv: " + string + "\n")
 
 MSG_SIZE = 1500
 TIMEOUT = 30
 
 # Bind to localhost and an ephemeral port
 UDP_IP = "127.0.0.1"
-UDP_PORT = 0
+UDP_PORT = int(sys.argv[1])
 
 # Set up the socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
@@ -40,7 +40,7 @@ while True:
     (data, addr) = result
 
     try:
-      decoded = json.loads(data)
+      decoded = json.loads(data.decode())
 
       # If the EOF flag is set, exit
       if (decoded['eof']):
@@ -49,15 +49,18 @@ while True:
 
       # If there is data, we accept it and print it out
       if (decoded['data']):
+        data = b64decode(decoded['data'].encode())
         # If we receive data, we assume it's in-order
         # You will need to do much more here
-        log("[recv data] " + str(decoded['sequence']) + " (" + str(len(decoded['data'])) + ") ACCEPTED (in-order)")
-        sys.stdout.buffer.write(b64decode(decoded['data']))
+        log("[recv data] " + str(decoded['sequence']) + " (" + str(len(data)) + ") ACCEPTED (in-order)")
+        sys.stdout.buffer.write(data)
 
       # Send back an ack to the sender
-      msg = json.dumps({"ack": decoded['sequence'] + len(decoded['data'])})
+      msg = json.dumps({"ack": decoded['sequence'] + len(data)})
       log("ABOUT TO SEND " + msg)
-      if sock.sendto(msg, addr) < len(msg):
+      sent = sock.sendto(msg.encode(), addr)
+      log("[sent] " + str(sent))
+      if sent < len(msg):
         log("[error] unable to fully send packet")
 
     except (ValueError, KeyError, TypeError) as e:
