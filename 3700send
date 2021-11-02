@@ -115,7 +115,7 @@ def handle_ack(packet):
         update_rtt(packet)
         del SEQ_BUFFER[seq_n]
 
-    if packet[SACK]:
+    if SACK in packet:
         # sack exists on ACK message
         # resend_sack(sack) TODO: performance? burden on network? retransmit single packet
         resend_packets()
