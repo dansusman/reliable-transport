@@ -89,7 +89,7 @@ while True:
             if decoded[EOF] or decoded[DATA]:
                 if DATA_BUFFER.get(seq_n) is None:
                     # not there, add it
-                    DATA_BUFFER[seq_n] == decoded
+                    DATA_BUFFER[seq_n] = decoded
                     no_sack_needed = seq_n == 0 or data_len + seq_n == NEXT_IN_ORDER
                     # check for in order
                     if no_sack_needed:
