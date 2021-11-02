@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 #
 # CS3700, Fall 2021
+# John Henry Rudden, Daniel Susman
 # TCP Project Starter Code
 #
 
@@ -9,14 +10,13 @@ import json
 import sys
 import socket
 import time
+import copy
 
 from base64 import b64encode
 
 # TODO: should SentEverything be handled in the handling of ACKS
 
 """
-1) TCP Header needs to be made (may change as we build) in JSON form
-2) Three way handshake
 3) Send Packets and recieve ACKs
 4) deal with missing packets (TCP RENO)
 5) Congestion Avoidance and Flow Control
@@ -25,13 +25,19 @@ from base64 import b64encode
 MSG_SIZE = 1500 # MTU
 DATA_SIZE = 1480 
 TIMEOUT = 30 # RTO
-RTT = 2 # Round trip time
 SEQUENCE = 0 # Sequence number
-CONGESTION_WINDOW = 1
-MSGS_IN_WINDOW = [] # current batch of packets being sent
-ACKED = 0 # number of messages in current window that have been acked
-SEQUENCE_STORE = {} # number of duplicate ACKs we have received
+CONGESTION_WINDOW = 4
+ACKED = [] # list of messages in current window that have been acked
+SEQUENCE_STORE = {} # map from seq number to a SeqInfo object, to update
+                    # at each successive window change
 SENT_EVERYTHING = False # have all the data been sent
+ADVERTISED_WINDOW = 4
+SSTHRESH = 4
+
+# RTT Estimation
+ALPHA = 0.875
+MOV_AVG = 500 # current RTT in milliseconds
+SEQ = "sequence"
 
 class SeqInfo:
     duplicate_count = 0
@@ -39,9 +45,8 @@ class SeqInfo:
     msg = None
 
     def __init__(self, msg):
-        self.time_stamp = datetime.now() * 1000 # in miliseconds
+        self.time_stamp = get_time()
         self.msg = msg
-
 
 # Bind to localhost and an ephemeral port
 IP_PORT = sys.argv[1]
@@ -59,9 +64,11 @@ def log(string):
     sys.stderr.write(datetime.datetime.now().strftime(
         "%H:%c:%S.%f") + " 3700send: " + string + "\n")
 
+def get_time():
+    return int(time.time() * 1000)
+
 def send_next_packet():
     global SEQUENCE
-
     data = sys.stdin.buffer.read(DATA_SIZE)
 
     if (len(data) > 0):
@@ -69,9 +76,8 @@ def send_next_packet():
         if (len(data) < DATA_SIZE):
             end_of_file = True
         # print(str(b64encode(data)))
-        msg = json.dumps({"sequence": SEQUENCE, "data": b64encode(
-            data).decode(), "eof": end_of_file}) # TODO: may need to have which 
-        MSGS_IN_WINDOW.append(msg)
+        msg = json.dumps({SEQ: SEQUENCE, "data": b64encode(
+            data).decode(), "eof": end_of_file, "ack": False})
         SEQUENCE_STORE[SEQUENCE] = SeqInfo(msg)
         SEQUENCE += len(data)
         if sock.sendto(msg.encode(), dest) < len(msg):
@@ -90,22 +96,82 @@ def send_packets():
             SENT_EVERYTHING = True
             break
 
+def recompute_window():
+    CONGESTION_WINDOW = 2 * CONGESTION_WINDOW
+    # TODO: THIS MAY BREAK EVERYTHING?
+
 def resend_packets():
+    """Resends all packets in the current window that have not been ACK'd."""
+    packets_to_send = copy.deepcopy(ACKED)
+    for key, seq_info in SEQUENCE_STORE:
+        for msg in ACKED:
+            if key == msg[SEQ]:
+                packets_to_send.remove(msg)
+    return send_all(packets_to_send)
+
+def send_all(packets_to_send):
+    for packet in packets_to_send:
+        sock.sendto(packet.encode(), dest)
+    return True
     
 
 def handle_ack(packet):
-    global SEQUENCE_STORE, MSGS_IN_WINDOW
-    if ack:
-        SEQUENCE_STORE.remove(ack.sequenceNumber)
+    global SEQUENCE_STORE, ACKED, SEQ
 
-# Send first packet
+    if not packet["ack"]:
+        log("error handling ACK from receiver")
 
+    if packet["eof"]:
+        SENT_EVERYTHING = True
+        return
+    # TODO : packet["last_ack"]  -> seq # added at receiver
+
+    if packet[SEQ] in SEQUENCE_STORE:
+        update_rtt(packet) # TODO
+        ACKED.append(packet) # we have ack'd another sent out message, add to list
+
+    if packet["last_seen"]:
+        last_ack = packet["last_seen"]
+        SEQUENCE_STORE[last_ack].duplicate_count += 1
+        # {
+        #         SEQ: 7
+        #         LAST_SEEN: 4
+        #         TIMESTAMP
+        # },
+        # {
+        #         SEQ: 7
+        #         LAST_SEEN: 6 # if seq num == last + 1 -> LAST_SEEN = NONE
+        # }
+
+def update_rtt(packet):
+    global SEQUENCE_STORE, MOV_AVG, SEQ, ALPHA
+    seq_info = SEQUENCE_STORE.get(decoded[SEQ])
+    sent_time = seq_info.time_stamp
+    received_time = get_time()
+    sample = received_time - sent_time
+    MOV_AVG = ALPHA * MOV_AVG + (1 - ALPHA) * sample 
+
+def is_timeout():
+    for packet in SEQUENCE_STORE:
+        if get_time() - packet.time_stamp > 2 * MOV_AVG:
+            return True
+    return False
+
+def are_duplicates():
+    for packet in SEQUENCE_STORE:
+        if packet.duplicate_count >= 3:
+            return True
+    return False
+
+# Send first packets
 send_packets()
+# start global timestamp
 
 # Now read in data, send packets
 while not SENT_EVERYTHING:
     log("ABOUT TO SLEEP")
     result = sock.recvfrom(MSG_SIZE)
+    # set global timestamp (we just got a message)
 
     if result:
         (data, addr) = result
@@ -114,20 +180,35 @@ while not SENT_EVERYTHING:
             log("[recv pkt] " + str(decoded))
             log("[recv ack] " + str(decoded['ack']))
 
-            if (ACKED == CONGESTION_WINDOW):
-                # send next batch
+            handle_ack(decoded)
+
+            if len(ACKED) == CONGESTION_WINDOW:
+                # we have received ACK for every packet we sent out
+                # flush SEQUENCE_STORE and keep the highest seq number in there
+                max_seq_number = max(SEQUENCE_STORE)
+                seq_to_keep = SEQUENCE_STORE[max_seq_number]
+                seq_to_keep.time_stamp = None
+                seq_to_keep.duplicate_count = 0
+                SEQUENCE_STORE = {}
+                SEQUENCE_STORE[max_seq_number] = seq_to_keep
+                ACKED = []
+                recompute_window()
+                send_packets()
 
         except (ValueError, KeyError, TypeError):
             log("[recv corrupt packet]")
     else:
         if (are_duplicates() or is_timeout()): # TODO: maybe optimize
-            # resend all 
+            # resend all in SEQ_STORE that are not in ACKED
+            resend_packets()
 
-        log("[error] timeout")
-        sys.exit(-1)
+# global TIMEOUT has been reached time.time() - time.start() > 30
+# log("[error] timeout")
+# sys.exit(-1)
+
 
 sock.sendto(json.dumps({"eof": True, "data": "",
-            "sequence": SEQUENCE, "ack": False}).encode(), dest)
+            SEQ: SEQUENCE, "ack": False}).encode(), dest)
 sys.exit(0)
 
 

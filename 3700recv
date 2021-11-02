@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 #
 # CS3700, Fall 2021
+# John Henry Rudden, Daniel Susman
 # TCP Project Starter Code
-
 
 import datetime
 import json
@@ -11,7 +11,6 @@ import socket
 
 from base64 import b64decode
 
-
 def log(string):
     sys.stderr.write(datetime.datetime.now().strftime(
         "%H:%M:%S.%f") + " 3700recv: " + string + "\n")
@@ -19,6 +18,8 @@ def log(string):
 
 MSG_SIZE = 1500
 TIMEOUT = 30
+DATA_BUFFER = {} # maybe []
+LAST_ACKED = None # Packet?
 
 # Bind to localhost and an ephemeral port
 UDP_IP = "127.0.0.1"
@@ -32,6 +33,22 @@ sock.settimeout(TIMEOUT)
 # Get port we bound to
 UDP_PORT = sock.getsockname()[1]
 log("[bound] " + str(UDP_PORT))
+
+
+def send_ack(packet):
+    # TODO
+
+def add_footers(packet):
+    # Add bonus info sender relies on
+
+# big thing: keeping invariant of last in-order completed ack
+# might want to write a method
+# called next in order that keeps adding 1400 to seq number until can't find next
+# going to have to figure out
+# how to get size of header and make sure data packets + header <= 1500
+# create header first and use len(json.dumps(msg)) to figure out size
+# need we attach receiver advertised window??????
+# print message received every time
 
 # Now listen for packets
 while True:
