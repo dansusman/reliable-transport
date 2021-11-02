@@ -107,7 +107,6 @@ def handle_ack(packet):
 
     ack = packet[ACK]
     seq_n = packet[SEQ]
-    sack = packet[SACK]
     if not ack:
         log("error handling ACK from receiver")
         sys.exit(-1) # TODO: maybe broken?
@@ -116,7 +115,7 @@ def handle_ack(packet):
         update_rtt(packet)
         del SEQ_BUFFER[seq_n]
 
-    if sack:
+    if packet[SACK]:
         # sack exists on ACK message
         # resend_sack(sack) TODO: performance? burden on network? retransmit single packet
         resend_packets()
