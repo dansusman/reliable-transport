@@ -163,8 +163,9 @@ while True:
                 else:
                     send_next_packet()
 
-        except (ValueError, KeyError, TypeError):
+        except (ValueError, KeyError, TypeError) as e:
             log("[recv corrupt packet]")
+            raise e
 
     elif not are_duplicates and not is_timeout:
         # done with everything
