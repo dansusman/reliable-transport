@@ -129,7 +129,7 @@ def update_rtt(packet):
     received_time = get_time()
     sample = received_time - sent_time
     MOV_AVG = ALPHA * MOV_AVG + (1 - ALPHA) * sample 
-    log("Update RTT: "  + MOV_AVG)
+    log("Update RTT: "  + str(MOV_AVG))
 
 def is_timeout():
     for packet in SEQ_BUFFER:
