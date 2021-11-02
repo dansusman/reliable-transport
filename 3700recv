@@ -55,10 +55,6 @@ def send_ack(packet, no_sack_needed, addr):
     if sent < len(msg):
         log("[error] unable to fully send packet")
 
-def add_footers(packet):
-    # Add bonus info sender relies on
-    # attach SACK info
-
 def find_new_last(decoded):
     global NEXT_IN_ORDER, OUT_OF_ORDER
 
