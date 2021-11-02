@@ -19,7 +19,16 @@ def log(string):
 MSG_SIZE = 1500
 TIMEOUT = 30
 DATA_BUFFER = {} # maybe []
-LAST_ACKED = None # Packet?
+# LAST_ACKED = None # Packet?
+NEXT_IN_ORDER = 0
+OUT_OF_ORDER = [] # list of out of order packets
+
+# Message Fields
+SEQ = "sequence"
+DATA = "data"
+ACK = "ack"
+SACK = "sack"
+EOF = "eof"
 
 # Bind to localhost and an ephemeral port
 UDP_IP = "127.0.0.1"
@@ -34,21 +43,38 @@ sock.settimeout(TIMEOUT)
 UDP_PORT = sock.getsockname()[1]
 log("[bound] " + str(UDP_PORT))
 
-
-def send_ack(packet):
-    # TODO
+def send_ack(packet, no_sack_needed):
+    global NEXT_IN_ORDER
+    # Send back an ack to the sender
+    msg = json.dumps({ACK: True, SEQ: packet[SEQ], EOF: packet[EOF]})
+    if not no_sack_needed:
+        msg[SACK] = NEXT_IN_ORDER
+    log("ABOUT TO SEND " + msg)
+    sent = sock.sendto(msg.encode(), addr)
+    log("[sent] " + str(sent))
+    if sent < len(msg):
+        log("[error] unable to fully send packet")
 
 def add_footers(packet):
     # Add bonus info sender relies on
+    # attach SACK info
 
-# big thing: keeping invariant of last in-order completed ack
-# might want to write a method
-# called next in order that keeps adding 1400 to seq number until can't find next
-# going to have to figure out
-# how to get size of header and make sure data packets + header <= 1500
-# create header first and use len(json.dumps(msg)) to figure out size
-# need we attach receiver advertised window??????
-# print message received every time
+def find_new_last(decoded):
+    global NEXT_IN_ORDER, OUT_OF_ORDER
+
+    NEXT_IN_ORDER = decoded[SEQ] + len(decoded[DATA])
+    # sort the list based on sequence number
+    OUT_OF_ORDER.sort(key=lambda x: x[SEQ])
+    index = 0
+    while index < len(OUT_OF_ORDER):
+        curr = OUT_OF_ORDER[index]
+        if NEXT_IN_ORDER == curr[SEQ]:
+            NEXT_IN_ORDER == curr[SEQ] + curr[DATA]
+            # print here?
+            sys.stdout.write(curr[DATA])
+            del OUT_OF_ORDER[index]
+        else:
+            return
 
 # Now listen for packets
 while True:
@@ -60,28 +86,29 @@ while True:
 
         try:
             decoded = json.loads(data.decode())
+            seq_n = decoded[SEQ]
+            data_len = len(decoded[DATA]) # TODO: might not be 1460 because bit convert not integer
 
-            # If the EOF flag is set, exit
-            if (decoded['eof']):
-                log("[completed]")
-                sys.exit(0)
+            # If the EOF flag is set or some data have been sent, add to DATA_BUFFER
+            if decoded[EOF] or decoded[DATA]:
+                if DATA_BUFFER.get(seq_n) is None:
+                    # not there, add it
+                    DATA_BUFFER[seq_n] == decoded
+                    no_sack_needed = seq_n == 0 or data_len + seq_n == NEXT_IN_ORDER
+                    # check for in order
+                    if no_sack_needed:
+                        # log("Accepted data in order: " + str(seq_n) + "length: " + str(data_len))
+                        sys.stdout.write(decoded[DATA])
+                        find_new_last(decoded)
+                    else:
+                        log("Accepted data out of order: " + str(seq_n) + "length: " + str(data_len))
+                        OUT_OF_ORDER.append(decoded)
 
-            # If there is data, we accept it and print it out
-            if (decoded['data']):
-                data = b64decode(decoded['data'].encode())
-                # If we receive data, we assume it's in-order
-                # You will need to do much more here
-                log("[recv data] " + str(decoded['sequence']) +
-                    " (" + str(len(data)) + ") ACCEPTED (in-order)")
-                sys.stdout.buffer.write(data)
+                    send_ack(decoded, no_sack_needed)
 
-            # Send back an ack to the sender
-            msg = json.dumps({"ack": decoded['sequence'] + len(data)})
-            log("ABOUT TO SEND " + msg)
-            sent = sock.sendto(msg.encode(), addr)
-            log("[sent] " + str(sent))
-            if sent < len(msg):
-                log("[error] unable to fully send packet")
+                else:
+                    # this is a duplicate, ignore it
+                    log("Received a duplicate " + str(decoded[SEQ]) + "length: " + str(data_len) + ", ignoring.")
 
         except (ValueError, KeyError, TypeError) as e:
             log("[recv corrupt packet]")
