@@ -14,13 +14,6 @@ import copy
 
 from base64 import b64encode
 
-# TODO: should SentEverything be handled in the handling of ACKS
-
-"""
-3) Send Packets and recieve ACKs
-4) deal with missing packets (TCP RENO)
-5) Congestion Avoidance and Flow Control
-"""
 
 MSG_SIZE = 1500 # MTU
 DATA_SIZE = 1460 
@@ -28,6 +21,7 @@ TIMEOUT = 30 # RTO
 SEQUENCE = 0 # Sequence number
 SEQ_BUFFER = {} # map from sequence number to SeqInfo currently in sliding window
 SENT_EVERYTHING = False # have all the data been sent
+SLIDING_WINDOW = 20
 
 # Message Fields
 SEQ = "sequence"
@@ -96,8 +90,8 @@ def send_next_packet():
         return False
 
 def send_packets():
-    global CONGESTION_WINDOW, SENT_EVERYTHING
-    for i in range(CONGESTION_WINDOW):
+    global SLIDING_WINDOW, SENT_EVERYTHING
+    for i in range(SLIDING_WINDOW):
         if not send_next_packet():
             SENT_EVERYTHING = True
             break
@@ -156,7 +150,6 @@ send_packets()
 # Now read in data, send packets
 while True:
     result = sock.recvfrom(MSG_SIZE)
-    # set global timestamp (we just got a message)
 
     if result:
         (data, addr) = result
