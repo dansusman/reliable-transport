@@ -80,35 +80,35 @@ while True:
     if result:
         (data, addr) = result
 
-        try:
-            decoded = json.loads(data.decode())
-            seq_n = decoded[SEQ]
-            data_len = len(decoded[DATA]) # TODO: might not be 1460 because bit convert not integer
+        # try:
+        decoded = json.loads(data.decode())
+        seq_n = decoded[SEQ]
+        data_len = len(decoded[DATA]) # TODO: might not be 1460 because bit convert not integer
 
-            # If the EOF flag is set or some data have been sent, add to DATA_BUFFER
-            if decoded[EOF] or decoded[DATA]:
-                if DATA_BUFFER.get(seq_n) is None:
-                    # not there, add it
-                    DATA_BUFFER[seq_n] = decoded
-                    no_sack_needed = seq_n == 0 or data_len + seq_n == NEXT_IN_ORDER
-                    # check for in order
-                    if no_sack_needed:
-                        # log("Accepted data in order: " + str(seq_n) + "length: " + str(data_len))
-                        sys.stdout.write(decoded[DATA])
-                        find_new_last(decoded)
-                    else:
-                        log("Accepted data out of order: " + str(seq_n) + "length: " + str(data_len))
-                        OUT_OF_ORDER.append(decoded)
-
-                    send_ack(decoded, no_sack_needed, addr)
-
+        # If the EOF flag is set or some data have been sent, add to DATA_BUFFER
+        if decoded[EOF] or decoded[DATA]:
+            if DATA_BUFFER.get(seq_n) is None:
+                # not there, add it
+                DATA_BUFFER[seq_n] = decoded
+                no_sack_needed = seq_n == 0 or data_len + seq_n == NEXT_IN_ORDER
+                # check for in order
+                if no_sack_needed:
+                    # log("Accepted data in order: " + str(seq_n) + "length: " + str(data_len))
+                    sys.stdout.write(decoded[DATA])
+                    find_new_last(decoded)
                 else:
-                    # this is a duplicate, ignore it
-                    log("Received a duplicate " + str(decoded[SEQ]) + "length: " + str(data_len) + ", ignoring.")
+                    log("Accepted data out of order: " + str(seq_n) + "length: " + str(data_len))
+                    OUT_OF_ORDER.append(decoded)
 
-        except (ValueError, KeyError, TypeError) as e:
-            log("[recv corrupt packet]")
-            raise e
+                send_ack(decoded, no_sack_needed, addr)
+
+            else:
+                # this is a duplicate, ignore it
+                log("Received a duplicate " + str(decoded[SEQ]) + "length: " + str(data_len) + ", ignoring.")
+
+        # except (ValueError, KeyError, TypeError) as e:
+        #     log("[recv corrupt packet]" + e)
+        #     raise e
     else:
         log("[error] timeout")
         sys.exit(-1)
