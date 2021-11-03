@@ -68,18 +68,20 @@ def get_time():
     return int(time.time() * 1000)
 
 def send_next_packet():
-    global SEQUENCE
+    global SEQUENCE, DATA_SIZE
     data = sys.stdin.buffer.read(DATA_SIZE)
+    log("new data")
+    log(str(data))
     if (len(data) > 0):
         # print(str(b64encode(data)))
-        msg = json.dumps({SEQ: SEQUENCE, "data": b64encode(data).decode(), "eof": False, "ack": False})
+        msg = json.dumps({SEQ: SEQUENCE, "data": b64encode(data).decode(), "eof": False, "ack": False, "length": len(data)})
         SEQ_BUFFER[SEQUENCE] = SeqInfo(msg)
         SEQUENCE += len(data)
         if sock.sendto(msg.encode(), dest) < len(msg):
             log("[error] unable to fully send packet")
         else:
             log("[send data] " + str(SEQUENCE) + " (" + str(len(data)) + ")")
-        SEQUENCE += len(data)
+        log(str(SEQ_BUFFER))
         return True
     else:
         return False
@@ -127,13 +129,13 @@ def update_rtt(packet):
     log("Update RTT: "  + str(MOV_AVG))
 
 def is_timeout():
-    for packet in SEQ_BUFFER:
+    for packet in SEQ_BUFFER.values():
         if get_time() - packet.time_stamp > 2 * MOV_AVG:
             return True
     return False
 
 def are_duplicates():
-    for packet in SEQ_BUFFER:
+    for packet in SEQ_BUFFER.values:
         if packet.duplicate_count >= 3:
             return True
     return False
@@ -152,9 +154,12 @@ while True:
             log("[recv pkt] " + str(decoded))
             log("[recv ack] " + str(decoded['ack']))
             if handle_ack(decoded):
-                if are_duplicates or is_timeout:
+                log("GOT TO HERE")
+                if is_timeout():
+                    log("GOT DUPES")
                     resend_packets()
                 else:
+                    log("CONTINUED")
                     send_next_packet()
             if len(SEQ_BUFFER) == 0:
                 break
@@ -171,6 +176,6 @@ while True:
     #     log("[error] timeout")
     #     sys.exit(-1)
 
-sock.sendto(json.dumps({"eof": True, "data": "", "sequence": SEQUENCE, "ack": False}).encode(), dest)
+sock.sendto(json.dumps({"eof": True, "data": "", "sequence": SEQUENCE, "ack": False, "length": 0}).encode(), dest)
 sys.exit(0)
 

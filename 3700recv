@@ -60,14 +60,14 @@ def find_new_last(decoded):
     global NEXT_IN_ORDER, OUT_OF_ORDER
     log(str(NEXT_IN_ORDER))
 
-    NEXT_IN_ORDER = decoded[SEQ] + len(decoded[DATA])
+    NEXT_IN_ORDER = decoded[SEQ] + decoded["length"]
     # sort the list based on sequence number
     OUT_OF_ORDER.sort(key=lambda x: x[SEQ])
     index = 0
     while index < len(OUT_OF_ORDER):
         curr = OUT_OF_ORDER[index]
         if NEXT_IN_ORDER == curr[SEQ]:
-            NEXT_IN_ORDER == curr[SEQ] + curr[DATA]
+            NEXT_IN_ORDER == curr[SEQ] + curr["length"]
             # print here?
             sys.stdout.write(curr[DATA])
             del OUT_OF_ORDER[index]
@@ -86,7 +86,7 @@ while True:
             log(str(data) + "RECEIVED")
             decoded = json.loads(data.decode())
             seq_n = decoded[SEQ]
-            data_len = len(decoded[DATA]) # TODO: might not be 1460 because bit convert not integer
+            data_len = decoded["length"] # TODO: might not be 1460 because bit convert not integer
             if (decoded['eof']):
                 log("[completed]")
                 sys.exit(0)
@@ -96,14 +96,16 @@ while True:
                 if DATA_BUFFER.get(seq_n) is None:
                     # not there, add it
                     DATA_BUFFER[seq_n] = decoded
-                    no_sack_needed = seq_n == 0 or data_len + seq_n == NEXT_IN_ORDER
+                    no_sack_needed = seq_n == 0 or seq_n == NEXT_IN_ORDER
                     # check for in order
                     if no_sack_needed:
                         sys.stdout.buffer.write(b64decode(decoded[DATA].encode()))
 
                         find_new_last(decoded)
+                        log("NEXT IN ORDER")
+                        log(str(NEXT_IN_ORDER))
                     else:
-                        log("Accepted data out of order: " + str(seq_n) + "length: " + str(data_len))
+                        log("Accepted data out of order: " + str(seq_n) + "next in order: " + str(NEXT_IN_ORDER))
                         OUT_OF_ORDER.append(decoded)
 
                     send_ack(decoded, no_sack_needed, addr)
