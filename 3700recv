@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 #
 # CS3700, Fall 2021
 # John Henry Rudden, Daniel Susman
@@ -86,6 +86,9 @@ while True:
             decoded = json.loads(data.decode())
             seq_n = decoded[SEQ]
             data_len = len(decoded[DATA]) # TODO: might not be 1460 because bit convert not integer
+            if (decoded['eof']):
+                log("[completed]")
+                sys.exit(0)
 
             # If the EOF flag is set or some data have been sent, add to DATA_BUFFER
             if decoded[EOF] or decoded[DATA]:
@@ -95,12 +98,8 @@ while True:
                     no_sack_needed = seq_n == 0 or data_len + seq_n == NEXT_IN_ORDER
                     # check for in order
                     if no_sack_needed:
-                        log("Accepted data in order: " + str(seq_n) + " length: " + str(data_len))
-                        log(str(decoded[DATA]))
                         sys.stdout.buffer.write(b64decode(decoded[DATA].encode()))
-                        if decoded[EOF]:
-                            log("there")
-                        
+
                         find_new_last(decoded)
                     else:
                         log("Accepted data out of order: " + str(seq_n) + "length: " + str(data_len))

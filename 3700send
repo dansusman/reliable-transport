@@ -16,7 +16,7 @@ from base64 import b64encode
 
 
 MSG_SIZE = 1500 # MTU
-DATA_SIZE = 1460 
+DATA_SIZE = 1000
 TIMEOUT = 30 # RTO
 SEQUENCE = 0 # Sequence number
 SEQ_BUFFER = {} # map from sequence number to SeqInfo currently in sliding window
@@ -73,11 +73,8 @@ def send_next_packet():
     log(str(data))
 
     if (len(data) > 0):
-        end_of_file = False
-        if (len(data) < DATA_SIZE):
-            end_of_file = True
         # print(str(b64encode(data)))
-        msg = json.dumps({SEQ: SEQUENCE, "data": b64encode(data).decode(), "eof": end_of_file, "ack": False})
+        msg = json.dumps({SEQ: SEQUENCE, "data": b64encode(data).decode(), "eof": False, "ack": False})
         SEQ_BUFFER[SEQUENCE] = SeqInfo(msg)
         SEQUENCE += len(data)
         if sock.sendto(msg.encode(), dest) < len(msg):
@@ -162,7 +159,7 @@ while True:
                 else:
                     send_next_packet()
             if len(SEQ_BUFFER) == 0:
-                sys.exit(0)
+                break
 
         except (ValueError, KeyError, TypeError) as e:
             log("[recv corrupt packet]")
@@ -177,5 +174,6 @@ while True:
     #     log("[error] timeout")
     #     sys.exit(-1)
 
+sock.sendto(json.dumps({"eof": True, "data": "", "sequence": SEQUENCE, "ack": False}).encode(), dest)
 sys.exit(0)
 
