@@ -46,10 +46,11 @@ log("[bound] " + str(UDP_PORT))
 def send_ack(packet, no_sack_needed, addr):
     global NEXT_IN_ORDER
     # Send back an ack to the sender
-    msg = json.dumps({ACK: True, SEQ: packet[SEQ], EOF: packet[EOF]})
+    msg ={ACK: True, SEQ: packet[SEQ], EOF: packet[EOF]}
     if not no_sack_needed:
         msg[SACK] = NEXT_IN_ORDER
-    log("ABOUT TO SEND " + msg)
+    msg = json.dumps(msg)
+    log("ABOUT TO SEND " + str(msg))
     sent = sock.sendto(msg.encode(), addr)
     log("[sent] " + str(sent))
     if sent < len(msg):

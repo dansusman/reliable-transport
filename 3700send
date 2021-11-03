@@ -70,8 +70,6 @@ def get_time():
 def send_next_packet():
     global SEQUENCE
     data = sys.stdin.buffer.read(DATA_SIZE)
-    log(str(data))
-
     if (len(data) > 0):
         # print(str(b64encode(data)))
         msg = json.dumps({SEQ: SEQUENCE, "data": b64encode(data).decode(), "eof": False, "ack": False})
@@ -96,7 +94,7 @@ def send_packets():
 def resend_packets():
     """Resends all packets in the current window."""
     for seq_info in SEQ_BUFFER.values():
-        built = SeqInfo.build(seq_info)
+        built = seq_info.build(seq_info)
         sock.sendto(built.msg.encode(), dest)
     
 def handle_ack(packet):
@@ -165,10 +163,9 @@ while True:
             log("[recv corrupt packet]")
             raise e
 
-    elif not are_duplicates and not is_timeout:
-        # done with everything
-        log("No result from recvfrom")
-        break
+    else:
+        log('TIMEOUT')
+        sys.exit(-1)
 
     # elif get_time() - time_since_last_receive > (TIMEOUT * 1000):
     #     log("[error] timeout")
