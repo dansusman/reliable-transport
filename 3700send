@@ -78,6 +78,8 @@ def send_next_packet():
         # print(str(b64encode(data)))
         msg = json.dumps({SEQ: SEQUENCE, "data": b64encode(
             data).decode(), "eof": end_of_file, "ack": False})
+        log(str(msg))
+        log("**************************")
         SEQ_BUFFER[SEQUENCE] = SeqInfo(msg)
         SEQUENCE += len(data)
         if sock.sendto(msg.encode(), dest) < len(msg):
@@ -124,7 +126,7 @@ def handle_ack(packet):
 
 def update_rtt(packet):
     global SEQ_BUFFER, MOV_AVG, SEQ, ALPHA
-    seq_info = SEQ_BUFFER.get(decoded[SEQ])
+    seq_info = SEQ_BUFFER.get(packet[SEQ])
     sent_time = seq_info.time_stamp
     received_time = get_time()
     sample = received_time - sent_time
@@ -161,6 +163,8 @@ while True:
                     resend_packets()
                 else:
                     send_next_packet()
+            if len(SEQ_BUFFER) == 0:
+                sys.exit(0)
 
         except (ValueError, KeyError, TypeError) as e:
             log("[recv corrupt packet]")
