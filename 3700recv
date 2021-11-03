@@ -96,9 +96,8 @@ while True:
                     # check for in order
                     if no_sack_needed:
                         log("Accepted data in order: " + str(seq_n) + " length: " + str(data_len))
-                        thing = b64decode(decoded[DATA]).decode()
-                        sys.stdout.write(thing)
-                        log(thing)
+                        log(str(decoded[DATA]))
+                        sys.stdout.buffer.write(b64decode(decoded[DATA].encode()))
                         if decoded[EOF]:
                             log("there")
                         

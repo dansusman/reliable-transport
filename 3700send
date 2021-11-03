@@ -70,16 +70,14 @@ def get_time():
 def send_next_packet():
     global SEQUENCE
     data = sys.stdin.buffer.read(DATA_SIZE)
+    log(str(data))
 
     if (len(data) > 0):
         end_of_file = False
         if (len(data) < DATA_SIZE):
             end_of_file = True
         # print(str(b64encode(data)))
-        msg = json.dumps({SEQ: SEQUENCE, "data": b64encode(
-            data).decode(), "eof": end_of_file, "ack": False})
-        log(str(msg))
-        log("**************************")
+        msg = json.dumps({SEQ: SEQUENCE, "data": b64encode(data).decode(), "eof": end_of_file, "ack": False})
         SEQ_BUFFER[SEQUENCE] = SeqInfo(msg)
         SEQUENCE += len(data)
         if sock.sendto(msg.encode(), dest) < len(msg):
