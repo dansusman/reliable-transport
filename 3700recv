@@ -63,13 +63,15 @@ def find_new_last(decoded):
     NEXT_IN_ORDER = decoded[SEQ] + decoded["length"]
     # sort the list based on sequence number
     OUT_OF_ORDER.sort(key=lambda x: x[SEQ])
+    log("OUT OF ORDER PACKETS SORTED: " + str([seq[SEQ] for seq in OUT_OF_ORDER]))
     index = 0
     while index < len(OUT_OF_ORDER):
         curr = OUT_OF_ORDER[index]
         if NEXT_IN_ORDER == curr[SEQ]:
-            NEXT_IN_ORDER == curr[SEQ] + curr["length"]
+            NEXT_IN_ORDER = curr[SEQ] + curr["length"]
             # print here?
-            sys.stdout.write(curr[DATA])
+            # sys.stdout.write(curr[DATA])
+            sys.stdout.buffer.write(b64decode(curr[DATA].encode()))
             del OUT_OF_ORDER[index]
         else:
             return
@@ -83,8 +85,8 @@ while True:
         (data, addr) = result
 
         try:
-            log(str(data) + "RECEIVED")
             decoded = json.loads(data.decode())
+            log("PACKET " + str(decoded[SEQ]) + " RECEIVED")
             seq_n = decoded[SEQ]
             data_len = decoded["length"] # TODO: might not be 1460 because bit convert not integer
             if (decoded['eof']):
@@ -93,10 +95,10 @@ while True:
 
             # If the EOF flag is set or some data have been sent, add to DATA_BUFFER
             if decoded[EOF] or decoded[DATA]:
+                no_sack_needed = seq_n == 0 or seq_n == NEXT_IN_ORDER
                 if DATA_BUFFER.get(seq_n) is None:
                     # not there, add it
                     DATA_BUFFER[seq_n] = decoded
-                    no_sack_needed = seq_n == 0 or seq_n == NEXT_IN_ORDER
                     # check for in order
                     if no_sack_needed:
                         sys.stdout.buffer.write(b64decode(decoded[DATA].encode()))
@@ -112,7 +114,8 @@ while True:
 
                 else:
                     # this is a duplicate, ignore it
-                    log("Received a duplicate " + str(decoded[SEQ]) + "length: " + str(data_len) + ", ignoring.")
+                    # log("Received a duplicate " + str(decoded[SEQ]) + "length: " + str(data_len) + ", ignoring.")
+                    send_ack(decoded, no_sack_needed, addr)
 
         except (ValueError, KeyError, TypeError) as e:
             log("[recv corrupt packet]")
