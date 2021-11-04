@@ -18,10 +18,9 @@ def log(string):
 
 MSG_SIZE = 1500
 TIMEOUT = 30
-DATA_BUFFER = {} # maybe []
-# LAST_ACKED = None # Packet?
-NEXT_IN_ORDER = 0
-OUT_OF_ORDER = [] # list of out of order packets
+DATA_BUFFER = {} # collection of packets we have recieved.
+NEXT_IN_ORDER = 0 # next inorder sequence number we have not yet recieved yet.
+OUT_OF_ORDER = [] # list of out of order packets we have recieved.
 
 # Message Fields
 SEQ = "sequence"
@@ -44,39 +43,38 @@ UDP_PORT = sock.getsockname()[1]
 log("[bound] " + str(UDP_PORT))
 
 def send_ack(packet, no_sack_needed, addr):
+    """Send an ack to the sender with fields based on recieved packet info."""
     global NEXT_IN_ORDER
     # Send back an ack to the sender
     msg ={ACK: True, SEQ: packet[SEQ], EOF: packet[EOF]}
     if not no_sack_needed:
         msg[SACK] = NEXT_IN_ORDER
     msg = json.dumps(msg)
-    log("ABOUT TO SEND " + str(msg))
     sent = sock.sendto(msg.encode(), addr)
     log("[sent] " + str(sent))
     if sent < len(msg):
         log("[error] unable to fully send packet")
 
 def find_new_last(decoded):
+    """Determine the next in order sequence number not yet recieved."""
+    """If next sequence number to recieve was recieved out of order, then
+    recursively determine next value. """
     global NEXT_IN_ORDER, OUT_OF_ORDER
-    log(str(NEXT_IN_ORDER))
 
     NEXT_IN_ORDER = decoded[SEQ] + decoded["length"]
     # sort the list based on sequence number
     OUT_OF_ORDER.sort(key=lambda x: x[SEQ])
-    log("OUT OF ORDER PACKETS SORTED: " + str([seq[SEQ] for seq in OUT_OF_ORDER]))
     index = 0
     while index < len(OUT_OF_ORDER):
         curr = OUT_OF_ORDER[index]
         if NEXT_IN_ORDER == curr[SEQ]:
             NEXT_IN_ORDER = curr[SEQ] + curr["length"]
-            # print here?
-            # sys.stdout.write(curr[DATA])
             sys.stdout.buffer.write(b64decode(curr[DATA].encode()))
             del OUT_OF_ORDER[index]
         else:
             return
 
-# Now listen for packets
+# Keep reading from socket until we have recieved an eof packet.
 while True:
     result = sock.recvfrom(MSG_SIZE)
 
@@ -88,24 +86,24 @@ while True:
             decoded = json.loads(data.decode())
             log("PACKET " + str(decoded[SEQ]) + " RECEIVED")
             seq_n = decoded[SEQ]
-            data_len = decoded["length"] # TODO: might not be 1460 because bit convert not integer
+            data_len = decoded["length"]
+            # if we recieve an end of file packet then quit. We are done!
             if (decoded['eof']):
                 log("[completed]")
                 sys.exit(0)
 
             # If the EOF flag is set or some data have been sent, add to DATA_BUFFER
-            if decoded[EOF] or decoded[DATA]:
+            if decoded[DATA]:
                 no_sack_needed = seq_n == 0 or seq_n <= NEXT_IN_ORDER
                 if DATA_BUFFER.get(seq_n) is None:
-                    # not there, add it
+                    # have we recieved this packet before
                     DATA_BUFFER[seq_n] = decoded
                     # check for in order
                     if no_sack_needed:
                         sys.stdout.buffer.write(b64decode(decoded[DATA].encode()))
 
+                        # this packet was in order, so see what our next inorder ACK we haven't recieved is.
                         find_new_last(decoded)
-                        log("NEXT IN ORDER")
-                        log(str(NEXT_IN_ORDER))
                     else:
                         log("Accepted data out of order: " + str(seq_n) + "next in order: " + str(NEXT_IN_ORDER))
                         OUT_OF_ORDER.append(decoded)
@@ -113,8 +111,7 @@ while True:
                     send_ack(decoded, no_sack_needed, addr)
 
                 else:
-                    # this is a duplicate, ignore it
-                    # log("Received a duplicate " + str(decoded[SEQ]) + "length: " + str(data_len) + ", ignoring.")
+                    # this is a duplicate, don't add it to data store, but resend ACK
                     send_ack(decoded, no_sack_needed, addr)
 
         except (ValueError, KeyError, TypeError) as e:

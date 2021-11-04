@@ -10,7 +10,6 @@ import json
 import sys
 import socket
 import time
-import copy
 import math
 
 from base64 import b64encode
@@ -18,11 +17,10 @@ from base64 import b64encode
 
 MSG_SIZE = 1500 # MTU
 DATA_SIZE = 1000
-TIMEOUT = 4 # RTO
-SEQUENCE = 0 # Sequence number
+TIMEOUT = 4 # Timeout for how long socket reads without recieving data.
+SEQUENCE = 0 # Sequence number of next packet not yet sent.
 SEQ_BUFFER = {} # map from sequence number to SeqInfo currently in sliding window
-SENT_EVERYTHING = False # have all the data been sent
-SLIDING_WINDOW = 20
+SLIDING_WINDOW = 20 # size of sliding window of unacked packets.
 
 # Message Fields
 SEQ = "sequence"
@@ -34,7 +32,6 @@ EOF = "eof"
 # RTT Estimation
 ALPHA = 0.875
 MOV_AVG = 500 # current RTT in milliseconds
-SEQ = "sequence"
 
 # Bind to localhost and an ephemeral port
 IP_PORT = sys.argv[1]
@@ -48,18 +45,19 @@ time.sleep(.5)
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.settimeout(TIMEOUT)
 
+# Object for storing info about a packet that is outbound
+# includes time_stamp of when packet was sent (used for determining if packet is dead)
+# and the msg itself which was sent.
 class SeqInfo:
-    duplicate_count = None
     time_stamp = None
     msg = None
 
-    def __init__(self, msg, duplicate_count=0):
+    def __init__(self, msg):
         self.time_stamp = get_time()
         self.msg = msg
-        self.duplicate_count = duplicate_count
 
     def build(self, seq_inf):
-        return SeqInfo(seq_inf.msg, seq_inf.duplicate_count)
+        return SeqInfo(seq_inf.msg)
     
     def __str__(self) -> str:
         return str(self.msg)
@@ -69,9 +67,11 @@ def log(string):
         "%H:%c:%S.%f") + " 3700send: " + string + "\n")
 
 def get_time():
+    """Get current system time in milliseconds"""
     return int(time.time() * 1000)
 
 def send_next_packet():
+    """Send the next packet of data from sys.stdin.buffer that has not yet been sent and add it to sliding window."""
     global SEQUENCE, DATA_SIZE
     data = sys.stdin.buffer.read(DATA_SIZE)
     if (len(data) > 0):
@@ -88,6 +88,7 @@ def send_next_packet():
         return False
 
 def send_packets():
+    """Send a sliding window worth of packets out. Used to init sliding window"""
     global SLIDING_WINDOW, SENT_EVERYTHING
     for i in range(SLIDING_WINDOW):
         if not send_next_packet():
@@ -101,13 +102,10 @@ def resend_packets():
         built = seq_info.build(seq_info)
         sock.sendto(built.msg.encode(), dest)
 
-def resend_packet(packet_sequence_num):
-    seq_info = SEQ_BUFFER[packet_sequence_num]
-    built = seq_info.build(seq_info)
-    sock.sendto(built.msg.encode(), dest)
-
-    
 def handle_ack(packet):
+    """Handle an incoming packet ACK. If it is for an item in the current window, then update RTT
+    and remove it from the window. If it is a SACK then resend all packets in window.
+    """
     global SEQ_BUFFER, ACKED, SEQ
 
     ack = packet[ACK]
@@ -127,12 +125,13 @@ def handle_ack(packet):
 
     if SACK in packet:
         # sack exists on ACK message
-        # resend_packet(packet[SACK]) # TODO: performance? burden on network? retransmit single packet
+        # packets may have been dropped as they're arriving out of order. RESEND ALL in WINDOW
         resend_packets()
         return False
     return True
 
 def update_rtt(packet):
+    """Update the current Round Trip Time for our system. RTT is a rolling average."""
     global SEQ_BUFFER, MOV_AVG, SEQ, ALPHA
     seq_info = SEQ_BUFFER.get(packet[SEQ])
     sent_time = seq_info.time_stamp
@@ -142,27 +141,23 @@ def update_rtt(packet):
     log("Update RTT: "  + str(MOV_AVG))
 
 def is_timeout():
+    """Are there any dead packets based on difference in sent time to current time. If packet has been
+    out for 2 times the RTT, then it is dead."""
     for packet in SEQ_BUFFER.values():
         if get_time() - packet.time_stamp > 2 * MOV_AVG:
             return True
     return False
 
-def are_duplicates():
-    for packet in SEQ_BUFFER.values:
-        if packet.duplicate_count >= 3:
-            return True
-    return False
-
-# Send first packets
+# Send first set of packets
 send_packets()
 
 # Now read in data, send packets
 while True:
+    """try reading from socket until timeout. If there was a timeout, we can't ensure packets are still alive
+    So resend them.
+    """
     try:
         result = sock.recvfrom(MSG_SIZE)
-   
-
-
         if result:
             (data, addr) = result
             try:
@@ -170,13 +165,9 @@ while True:
                 log("[recv pkt] " + str(decoded))
                 log("[recv ack] " + str(decoded['ack']))
                 if handle_ack(decoded):
-                    log("GOT TO HERE")
                     if is_timeout():
-                        log("GOT DUPES")
                         resend_packets()
                     else:
-                        log("CONTINUED")
-                        log(str(SEQ_BUFFER))
                         send_next_packet()
                 if len(SEQ_BUFFER) == 0:
                     break
@@ -193,11 +184,7 @@ while True:
         log(str(e))
         resend_packets()
 
-    # elif get_time() - time_since_last_receive > (TIMEOUT * 1000):
-    #     log("[error] timeout")
-    #     sys.exit(-1)
-
-log("SENT EOF")
+# Send an volley of eof packets in case one is dropped. This is because we are not awaiting an ack
 for i in range (10):
     sock.sendto(json.dumps({"eof": True, "data": "", "sequence": SEQUENCE, "ack": False, "length": 0}).encode(), dest)
 sys.exit(0)
