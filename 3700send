@@ -100,6 +100,12 @@ def resend_packets():
     for seq_info in SEQ_BUFFER.values():
         built = seq_info.build(seq_info)
         sock.sendto(built.msg.encode(), dest)
+
+def resend_packet(packet_sequence_num):
+    seq_info = SEQ_BUFFER[packet_sequence_num]
+    built = seq_info.build(seq_info)
+    sock.sendto(built.msg.encode(), dest)
+
     
 def handle_ack(packet):
     global SEQ_BUFFER, ACKED, SEQ
@@ -112,7 +118,7 @@ def handle_ack(packet):
 
     if seq_n in SEQ_BUFFER:
         update_rtt(packet)
-        timeout = math.ceil(MOV_AVG / 1000) * 4
+        timeout = math.ceil(MOV_AVG / 1000) * 2
         sock.settimeout(timeout)
         log("*********************")
         log("ABOUT TO DELETE SEQUENCE NUMBER: " + str(seq_n))
@@ -121,7 +127,7 @@ def handle_ack(packet):
 
     if SACK in packet:
         # sack exists on ACK message
-        # resend_sack(sack) TODO: performance? burden on network? retransmit single packet
+        # resend_packet(packet[SACK]) # TODO: performance? burden on network? retransmit single packet
         resend_packets()
         return False
     return True
@@ -170,6 +176,7 @@ while True:
                         resend_packets()
                     else:
                         log("CONTINUED")
+                        log(str(SEQ_BUFFER))
                         send_next_packet()
                 if len(SEQ_BUFFER) == 0:
                     break

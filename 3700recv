@@ -95,7 +95,7 @@ while True:
 
             # If the EOF flag is set or some data have been sent, add to DATA_BUFFER
             if decoded[EOF] or decoded[DATA]:
-                no_sack_needed = seq_n == 0 or seq_n == NEXT_IN_ORDER
+                no_sack_needed = seq_n == 0 or seq_n <= NEXT_IN_ORDER
                 if DATA_BUFFER.get(seq_n) is None:
                     # not there, add it
                     DATA_BUFFER[seq_n] = decoded
