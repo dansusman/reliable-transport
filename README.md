@@ -1,4 +1,6 @@
-# CS3700 Project4 README
+# Reliable Transport Protocol
+
+This repo holds the source code for Project 4 of Networks and Distributed Systems course at Northeastern University. We were tasked to implemented something similar to TCP, i.e. build some reliability guarantees on top of UDP.
 
 Authors: John Henry Rudden, Daniel Susman
 
